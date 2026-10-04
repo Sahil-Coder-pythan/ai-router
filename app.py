@@ -1,25 +1,62 @@
-from fastapi import FastAPI, Depends, HTTPException, Header
+import os
+import uuid
+import httpx
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import HTMLResponse
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import List, Optional
-from database import engine, get_db, Base
-from models import Provider, ProductKey
-from router_logic import estimate_response_complexity
-from providers import call_llm, verify_provider_credentials
-from template import DASHBOARD_HTML
+from typing import Optional, List
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey
+from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
+
+# 1. Database Setup
+DATABASE_URL = "sqlite:///./router.db"
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# Models
+class Provider(Base):
+    __tablename__ = "providers"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    api_key = Column(String)
+    base_url = Column(String)
+    model_name = Column(String)
+
+class ProductKey(Base):
+    __tablename__ = "product_keys"
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, index=True)
+    company_name = Column(String, index=True)
+    is_active = Column(Boolean, default=True)
+    low_provider_id = Column(Integer, ForeignKey("providers.id"))
+    medium_provider_id = Column(Integer, ForeignKey("providers.id"))
+    hard_provider_id = Column(Integer, ForeignKey("providers.id"))
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Powerful AI Router", version="2.0")
+# DB Dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-class ProviderVerifyRequest(BaseModel):
+# 2. FastAPI Setup
+app = FastAPI(title="AI Router Console")
+
+# Import HTML Template
+from template import DASHBOARD_HTML
+
+# Pydantic Schemas
+class ProviderCreate(BaseModel):
     name: str
     api_key: str
-    base_url: str = "https://api.openai.com/v1"
+    base_url: str
     model_name: str
 
-class ProductKeyCreateRequest(BaseModel):
+class ProductKeyCreate(BaseModel):
     company_name: str
     low_provider_id: int
     medium_provider_id: int
@@ -29,99 +66,137 @@ class ChatMessage(BaseModel):
     role: str
     content: str
 
-class ChatRequest(BaseModel):
+class ChatCompletionRequest(BaseModel):
+    model: Optional[str] = "auto"
     messages: List[ChatMessage]
 
+# 3. Web UI Route
 @app.get("/", response_class=HTMLResponse)
-def dashboard():
+def get_dashboard():
     return DASHBOARD_HTML
 
+# 4. API Provider Routes
 @app.post("/admin/providers/verify-and-add")
-async def verify_and_add_provider(data: ProviderVerifyRequest, db: Session = Depends(get_db)):
-    is_valid = await verify_provider_credentials(data.api_key, data.base_url, data.model_name)
-    if not is_valid:
-        return {"valid": False, "message": "Credentials check failed"}
+async def verify_and_add_provider(data: ProviderCreate, db: Session = Depends(get_db)):
+    # Test API Key with a small payload
+    try:
+        async with httpx.AsyncClient() as client:
+            headers = {"Authorization": f"Bearer {data.api_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": data.model_name,
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 5
+            }
+            url = f"{data.base_url.rstrip('/')}/chat/completions"
+            response = await client.post(url, headers=headers, json=payload, timeout=10.0)
+            
+            if response.status_code != 200:
+                return {"valid": False, "error": response.text}
+    except Exception as e:
+        return {"valid": False, "error": str(e)}
 
-    provider = Provider(
-        name=data.name,
-        api_key=data.api_key,
-        base_url=data.base_url,
-        model_name=data.model_name
-    )
-    db.add(provider)
+    # Save to DB if valid
+    new_provider = Provider(**data.dict())
+    db.add(new_provider)
     db.commit()
-    db.refresh(provider)
-    return {"valid": True, "provider_id": provider.id}
+    db.refresh(new_provider)
+    return {"valid": True, "provider_id": new_provider.id}
 
 @app.get("/admin/providers")
-def list_providers(db: Session = Depends(get_db)):
-    return db.query(Provider).filter(Provider.is_active == True).all()
+def get_providers(db: Session = Depends(get_db)):
+    return db.query(Provider).all()
 
 @app.post("/admin/product-key")
-def create_product_key(data: ProductKeyCreateRequest, db: Session = Depends(get_db)):
-    key = ProductKey.generate_key()
-    product = ProductKey(
-        key=key,
-        name=f"{data.company_name} Product Key",
+def create_product_key(data: ProductKeyCreate, db: Session = Depends(get_db)):
+    gen_key = f"sk-prod-{uuid.uuid4().hex[:16]}"
+    new_key = ProductKey(
+        key=gen_key,
         company_name=data.company_name,
         low_provider_id=data.low_provider_id,
         medium_provider_id=data.medium_provider_id,
-        hard_provider_id=data.hard_provider_id,
-        is_active=True
+        hard_provider_id=data.hard_provider_id
     )
-    db.add(product)
+    db.add(new_key)
     db.commit()
-    db.refresh(product)
-    return {"product_key": product.key}
+    db.refresh(new_key)
+    return {"product_key": gen_key, "company_name": data.company_name}
 
+# 5. Strict Multi-Tenant History Routes
+@app.get("/admin/history/{company_name}")
+def get_isolated_history(company_name: str, db: Session = Depends(get_db)):
+    history = db.query(ProductKey).filter(
+        ProductKey.company_name == company_name,
+        ProductKey.is_active == True
+    ).all()
+    
+    return {
+        "company": company_name,
+        "history": [
+            {
+                "id": k.id,
+                "key": k.key,
+                "company_name": k.company_name,
+                "is_active": k.is_active
+            } for k in history
+        ]
+    }
+
+@app.delete("/admin/history/delete/{key_id}")
+def delete_isolated_key(key_id: int, db: Session = Depends(get_db)):
+    key_obj = db.query(ProductKey).filter(ProductKey.id == key_id).first()
+    if not key_obj:
+        raise HTTPException(status_code=404, detail="Key not found")
+        
+    db.delete(key_obj)
+    db.commit()
+    return {"status": "success", "message": "Key permanently deleted"}
+
+# 6. Core Router Dynamic Route
 @app.post("/v1/chat/completions")
-async def chat_completions(
-    request: ChatRequest,
-    authorization: Optional[str] = Header(None),
+async def router_chat(
+    request: ChatCompletionRequest,
+    authorization: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Missing Production Key")
+        raise HTTPException(status_code=401, detail="Missing or Invalid API Key")
+    
+    prod_key_str = authorization.replace("Bearer ", "").strip()
+    prod_key = db.query(ProductKey).filter(ProductKey.key == prod_key_str, ProductKey.is_active == True).first()
+    
+    if not prod_key:
+        raise HTTPException(status_code=401, detail="Unauthorized Production Key")
 
-    product_key_str = authorization.replace("Bearer ", "").strip()
-    product = db.query(ProductKey).filter(
-        ProductKey.key == product_key_str,
-        ProductKey.is_active == True
-    ).first()
+    # Count prompt word length
+    total_words = sum(len(msg.content.split()) for msg in request.messages)
 
-    if not product:
-        raise HTTPException(401, "Invalid Production Key")
-
-    messages = [{"role": m.role, "content": m.content} for m in request.messages]
-
-    # 1. अंदाज़ा लगाना (Routing Decision)
-    complexity = estimate_response_complexity(messages)
-
-    # 2. कंपनी की प्रोडक्शन की में चुनी गई API Key चुनना
-    if complexity == "hard":
-        provider = product.hard_provider
-    elif complexity == "medium":
-        provider = product.medium_provider
+    # Smart Routing Engine Logic
+    if total_words < 50:
+        selected_provider_id = prod_key.low_provider_id
+    elif total_words < 150:
+        selected_provider_id = prod_key.medium_provider_id
     else:
-        provider = product.low_provider
+        selected_provider_id = prod_key.hard_provider_id
 
+    provider = db.query(Provider).filter(Provider.id == selected_provider_id).first()
     if not provider:
-        raise HTTPException(500, "Mapped API key not found")
+        raise HTTPException(status_code=500, detail="Mapped Provider not found")
 
-    # 3. चुनी हुई API Key पर सवाल भेजना
-    try:
-        reply = await call_llm(provider, messages)
-    except Exception as e:
-        raise HTTPException(500, f"Model Error: {str(e)}")
-
-    return {
-        "id": "router-response",
-        "object": "chat.completion",
-        "model": provider.model_name,
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": reply},
-            "finish_reason": "stop"
-        }],
-        "routed_to": f"{complexity.upper()} -> {provider.name} ({provider.model_name})"
-    }
+    # Proxy call to selected Provider
+    async with httpx.AsyncClient() as client:
+        headers = {
+            "Authorization": f"Bearer {provider.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": provider.model_name,
+            "messages": [msg.dict() for msg in request.messages]
+        }
+        url = f"{provider.base_url.rstrip('/')}/chat/completions"
+        
+        try:
+            res = await client.post(url, headers=headers, json=payload, timeout=60.0)
+            return res.json()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Provider call failed: {str(e)}")
+    
