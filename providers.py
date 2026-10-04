@@ -1,42 +1,25 @@
 import httpx
 from typing import List, Dict
-
-# 1. डेटाबेस टेबल के लिए (models.py से Provider क्लास)
 from models import Provider
-
-# 2. AI Model वैलीडेशन के लिए (MODEL.py से)
 from MODEL import is_model_supported
-
-# 3. URL वैलीडेशन के लिए (URL.py से)
 from URL import is_url_supported
 
-
 async def verify_provider_credentials(api_key: str, base_url: str, model_name: str) -> bool:
-    """
-    1. चेक करता है कि URL.py में Base URL valid है या नहीं।
-    2. चेक करता है कि MODEL.py में Model Name valid है या नहीं।
-    3. LLM Endpoint को Live Request भेजकर Test करता है।
-    """
     clean_url = base_url.strip().rstrip('/')
     clean_model = model_name.strip()
 
-    # Step 1: Validate URL using URL.py
     if not is_url_supported(clean_url):
-        print(f"Validation Failed: '{clean_url}' URL.py में सपोर्टेड नहीं है।")
         return False
 
-    # Step 2: Validate Model using MODEL.py
     if not is_model_supported(clean_model):
-        print(f"Validation Failed: '{clean_model}' MODEL.py में सपोर्टेड नहीं है।")
         return False
 
-    # Step 3: Format Completion URL
+    # Endpoint formatting: /chat/completions auto-attach
     if clean_url.endswith("/chat/completions"):
         full_url = clean_url
     else:
         full_url = f"{clean_url}/chat/completions"
 
-    # Step 4: Headers & Test Payload
     headers = {
         "Authorization": f"Bearer {api_key.strip()}",
         "Content-Type": "application/json"
@@ -47,20 +30,17 @@ async def verify_provider_credentials(api_key: str, base_url: str, model_name: s
         "max_tokens": 1
     }
 
-    # Step 5: Test Live Connection
     try:
+        # POST method standard request
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             response = await client.post(full_url, headers=headers, json=payload)
             return response.status_code == 200
     except Exception as e:
-        print(f"Live Verification Error: {str(e)}")
+        print(f"Verification Error: {str(e)}")
         return False
 
 
 async def call_llm(provider: Provider, messages: List[Dict]) -> str:
-    """
-    यूज़र के मैसेजेस को असली LLM Provider को भेजता है और रिस्पॉन्स लौटाता है।
-    """
     clean_url = provider.base_url.strip().rstrip('/')
     
     if clean_url.endswith("/chat/completions"):
@@ -83,4 +63,4 @@ async def call_llm(provider: Provider, messages: List[Dict]) -> str:
         response.raise_for_status()
         data = response.json()
         return data["choices"][0]["message"]["content"]
-    
+        
