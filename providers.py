@@ -1,8 +1,13 @@
 import httpx
 from typing import List, Dict
 
-# कैपिटल फाइलों (URL.py और MODEL.py) से फ़ंक्शन इम्पोर्ट करें
+# 1. डेटाबेस टेबल के लिए (models.py से Provider क्लास)
+from models import Provider
+
+# 2. AI Model वैलीडेशन के लिए (MODEL.py से)
 from MODEL import is_model_supported
+
+# 3. URL वैलीडेशन के लिए (URL.py से)
 from URL import is_url_supported
 
 
@@ -52,7 +57,7 @@ async def verify_provider_credentials(api_key: str, base_url: str, model_name: s
         return False
 
 
-async def call_llm(provider, messages: List[Dict]) -> str:
+async def call_llm(provider: Provider, messages: List[Dict]) -> str:
     """
     यूज़र के मैसेजेस को असली LLM Provider को भेजता है और रिस्पॉन्स लौटाता है।
     """
@@ -78,3 +83,4 @@ async def call_llm(provider, messages: List[Dict]) -> str:
         response.raise_for_status()
         data = response.json()
         return data["choices"][0]["message"]["content"]
+    
