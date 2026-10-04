@@ -316,11 +316,27 @@ def is_model_supported(model_name: str) -> bool:
         if m.lower() == clean_model:
             return True
 
-    # Prefix Check
+    # Prefix Check — covers almost every major company model family
     common_prefixes = [
-        "gpt-", "o1-", "o3-", "gemini-", "gemma-", "llama-", "meta-llama/", 
-        "claude-", "deepseek", "mistral", "mixtral", "qwen", "phi-", "granite", 
-        "openai/", "whisper", "command-"
+        "gpt-", "o1-", "o3-", "o4-", "chatgpt-", 
+        "gemini-", "gemma-", 
+        "llama-", "meta-llama/", "meta/",
+        "claude-", "anthropic/",
+        "deepseek", "deepseek-",
+        "mistral", "mixtral", "codestral", "pixtral", "ministral", "devstral",
+        "qwen", "qwen2", "qwen3", "qwq-",
+        "phi-", "microsoft/",
+        "granite", "ibm-",
+        "openai/", "whisper", 
+        "command-", "command-r", "aya-", "cohere",
+        "grok-", "xai/",
+        "sonar-", "perplexity",
+        "yi-", "01-ai/",
+        "falcon", "bloom", "starcoder", "pythia", "mpt-", "dbrx",
+        "baichuan", "chatglm", "glm-", "internlm", "olmo",
+        "nemotron", "nvidia/",
+        "minimax", "moonshot", "kimi", "reka-", "step-",
+        "veo-", "lyria-", "imagen-",
     ]
     for prefix in common_prefixes:
         if clean_model.startswith(prefix):
