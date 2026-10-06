@@ -3,15 +3,17 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-# Render par DATABASE_URL aayega, local par SQLite chalega
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./ai_router.db")
 
-# Render PostgreSQL ke liye thoda badlaav
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 engine = create_engine(
     DATABASE_URL,
+    pool_size=20,
+    max_overflow=30,
+    pool_pre_ping=True,
+    pool_recycle=280,
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
 )
 
@@ -24,4 +26,3 @@ def get_db():
         yield db
     finally:
         db.close()
-        
