@@ -34,6 +34,7 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
 
 @app.get("/", response_class=HTMLResponse)
+@app.head("/", response_class=HTMLResponse)
 def dashboard():
     return DASHBOARD_HTML
 
@@ -102,7 +103,7 @@ async def chat_completions(
     if complexity == "hard":
         provider = product.hard_provider
     elif complexity == "medium":
-        provider = product.medium_provider
+        provider = provider = product.medium_provider
     else:
         provider = product.low_provider
 
