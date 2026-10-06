@@ -16,7 +16,7 @@ from template import DASHBOARD_HTML
 Base.metadata.create_all(bind=engine)
 
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="Powerful AI Router", version="2.1")
+app = FastAPI(title="Powerful AI Router", version="2.2")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -73,6 +73,41 @@ def list_providers(db: Session = Depends(get_db)):
     return db.query(Provider).filter(Provider.is_active == True).all()
 
 
+@app.delete("/admin/providers/{provider_id}")
+def delete_provider(provider_id: int, db: Session = Depends(get_db)):
+    provider = db.query(Provider).filter(Provider.id == provider_id).first()
+    if not provider:
+        raise HTTPException(404, "Provider not found")
+    provider.is_active = False
+    db.commit()
+    return {"success": True, "message": "API Key deleted"}
+
+
+@app.get("/admin/product-keys")
+def list_product_keys(db: Session = Depends(get_db)):
+    keys = db.query(ProductKey).filter(ProductKey.is_active == True).order_by(ProductKey.created_at.desc()).all()
+    return [
+        {
+            "id": k.id,
+            "key": k.key,
+            "company_name": k.company_name,
+            "name": k.name,
+            "created_at": str(k.created_at)
+        }
+        for k in keys
+    ]
+
+
+@app.delete("/admin/product-keys/{key_id}")
+def delete_product_key(key_id: int, db: Session = Depends(get_db)):
+    product = db.query(ProductKey).filter(ProductKey.id == key_id).first()
+    if not product:
+        raise HTTPException(404, "Production Key not found")
+    product.is_active = False
+    db.commit()
+    return {"success": True, "message": "Production Key deleted"}
+
+
 @app.post("/admin/product-key")
 def create_product_key(data: ProductKeyCreateRequest, db: Session = Depends(get_db)):
     key = ProductKey.generate_key()
@@ -122,8 +157,8 @@ async def chat_completions(
     else:
         provider = product.low_provider
 
-    if not provider:
-        raise HTTPException(500, "Mapped API key not found")
+    if not provider or not provider.is_active:
+        raise HTTPException(500, "Mapped API key not found or deleted")
 
     try:
         reply = await call_llm(provider, messages)
@@ -140,5 +175,4 @@ async def chat_completions(
             "finish_reason": "stop"
         }],
         "routed_to": f"{complexity.upper()} -> {provider.name} ({provider.model_name})"
-    }
-    
+}
