@@ -176,3 +176,4 @@ async def chat_completions(
         }],
         "routed_to": f"{complexity.upper()} -> {provider.name} ({provider.model_name})"
 }
+    
