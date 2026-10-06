@@ -1,8 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from database import engine, get_db, Base
 from models import Provider, ProductKey
@@ -12,7 +15,11 @@ from template import DASHBOARD_HTML
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Powerful AI Router", version="2.0")
+limiter = Limiter(key_func=get_remote_address)
+app = FastAPI(title="Powerful AI Router", version="2.1")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 
 class ProviderVerifyRequest(BaseModel):
     name: str
@@ -20,23 +27,28 @@ class ProviderVerifyRequest(BaseModel):
     base_url: str = "https://api.openai.com/v1"
     model_name: str
 
+
 class ProductKeyCreateRequest(BaseModel):
     company_name: str
     low_provider_id: int
     medium_provider_id: int
     hard_provider_id: int
 
+
 class ChatMessage(BaseModel):
     role: str
     content: str
 
+
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
+
 
 @app.get("/", response_class=HTMLResponse)
 @app.head("/", response_class=HTMLResponse)
 def dashboard():
     return DASHBOARD_HTML
+
 
 @app.post("/admin/providers/verify-and-add")
 async def verify_and_add_provider(data: ProviderVerifyRequest, db: Session = Depends(get_db)):
@@ -55,9 +67,11 @@ async def verify_and_add_provider(data: ProviderVerifyRequest, db: Session = Dep
     db.refresh(provider)
     return {"valid": True, "provider_id": provider.id}
 
+
 @app.get("/admin/providers")
 def list_providers(db: Session = Depends(get_db)):
     return db.query(Provider).filter(Provider.is_active == True).all()
+
 
 @app.post("/admin/product-key")
 def create_product_key(data: ProductKeyCreateRequest, db: Session = Depends(get_db)):
@@ -76,9 +90,12 @@ def create_product_key(data: ProductKeyCreateRequest, db: Session = Depends(get_
     db.refresh(product)
     return {"product_key": product.key}
 
+
 @app.post("/v1/chat/completions")
+@limiter.limit("120/minute")
 async def chat_completions(
-    request: ChatRequest,
+    request: Request,
+    data: ChatRequest,
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ):
@@ -94,23 +111,20 @@ async def chat_completions(
     if not product:
         raise HTTPException(401, "Invalid Production Key")
 
-    messages = [{"role": m.role, "content": m.content} for m in request.messages]
+    messages = [{"role": m.role, "content": m.content} for m in data.messages]
 
-    # 1. अंदाज़ा लगाना (Routing Decision)
     complexity = estimate_response_complexity(messages)
 
-    # 2. कंपनी की प्रोडक्शन की में चुनी गई API Key चुनना
     if complexity == "hard":
         provider = product.hard_provider
     elif complexity == "medium":
-        provider = provider = product.medium_provider
+        provider = product.medium_provider
     else:
         provider = product.low_provider
 
     if not provider:
         raise HTTPException(500, "Mapped API key not found")
 
-    # 3. चुनी हुई API Key पर सवाल भेजना
     try:
         reply = await call_llm(provider, messages)
     except Exception as e:
@@ -126,5 +140,5 @@ async def chat_completions(
             "finish_reason": "stop"
         }],
         "routed_to": f"{complexity.upper()} -> {provider.name} ({provider.model_name})"
-}
+    }
     
