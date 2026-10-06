@@ -1,14 +1,14 @@
 # ==============================================================================
-# ENTERPRISE DASHBOARD UI TEMPLATE
+# ENTERPRISE DASHBOARD UI TEMPLATE WITH SPLASH SCREEN
 # ==============================================================================
 
-HTML_TEMPLATE = """
+DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enterprise AI Gateway & Router</title>
+    <title>Stratissoft - AI Router Engine</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -17,6 +17,55 @@ HTML_TEMPLATE = """
             color: #e2e8f0;
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
         }
+
+        /* Splash Screen Overlay */
+        #splash-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #ffffff;
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.6s ease, visibility 0.6s ease;
+        }
+
+        .splash-logo {
+            width: 90px;
+            height: 90px;
+            background: linear-gradient(135deg, #2563eb, #4f46e5);
+            border-radius: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 20px 30px -10px rgba(37, 99, 235, 0.4);
+            animation: pulse-ring 1.8s infinite ease-in-out;
+        }
+
+        @keyframes pulse-ring {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.5);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 20px rgba(37, 99, 235, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+            }
+        }
+
+        .splash-hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
         .glass-panel {
             background: rgba(17, 24, 39, 0.7);
             backdrop-filter: blur(12px);
@@ -35,6 +84,15 @@ HTML_TEMPLATE = """
 </head>
 <body class="min-h-screen flex flex-col justify-between">
 
+    <!-- LinkedIn Style Professional Splash Screen -->
+    <div id="splash-screen">
+        <div class="splash-logo mb-6">
+            <i class="fa-solid fa-network-wired text-4xl text-white"></i>
+        </div>
+        <h1 class="text-3xl font-extrabold text-gray-900 tracking-wider">Stratissoft</h1>
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mt-2">Enterprise AI Router Engine</p>
+    </div>
+
     <!-- Top Navigation Bar -->
     <header class="glass-panel sticky top-0 z-50 px-6 py-4 border-b border-gray-800">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
@@ -43,7 +101,7 @@ HTML_TEMPLATE = """
                     <i class="fa-solid fa-network-wired text-xl"></i>
                 </div>
                 <div>
-                    <h1 class="font-bold text-lg text-white tracking-wide">AI Router Engine</h1>
+                    <h1 class="font-bold text-lg text-white tracking-wide">Stratissoft AI Router</h1>
                     <span class="text-xs text-green-400 font-mono flex items-center gap-1">
                         <span class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span> Multi-Tenant Active
                     </span>
@@ -55,7 +113,7 @@ HTML_TEMPLATE = """
                     <i class="fa-solid fa-server text-blue-400 mr-1.5"></i> Status: Healthy
                 </div>
                 <div class="h-8 w-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-sm text-white">
-                    E
+                    S
                 </div>
             </div>
         </div>
@@ -161,7 +219,6 @@ HTML_TEMPLATE = """
                             </tr>
                         </thead>
                         <tbody id="keys-list-body" class="divide-y divide-gray-800">
-                            <!-- Dynamic Content Will Be Inserted Here -->
                             <tr>
                                 <td colspan="4" class="px-4 py-6 text-center text-gray-500 italic">
                                     No active keys verified yet. Add one from the form.
@@ -177,11 +234,21 @@ HTML_TEMPLATE = """
 
     <!-- Footer -->
     <footer class="glass-panel border-t border-gray-800 py-4 px-6 text-center text-xs text-gray-500">
-        Enterprise Gateway Router Engine &copy; 2026. Secured & Isolated Architecture.
+        Stratissoft Enterprise Gateway Router Engine &copy; 2026. All Rights Reserved.
     </footer>
 
-    <!-- Dropdown Menu Script -->
+    <!-- Splash Screen & Dropdown Menu Script -->
     <script>
+        // Splash Screen Timer Logic
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                const splash = document.getElementById('splash-screen');
+                if (splash) {
+                    splash.classList.add('splash-hidden');
+                }
+            }, 1800);
+        });
+
         function toggleActionMenu(id) {
             const menu = document.getElementById(`action-menu-${id}`);
             document.querySelectorAll('.dropdown-menu').forEach(m => {
