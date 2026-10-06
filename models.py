@@ -23,7 +23,6 @@ class ProductKey(Base):
     name = Column(String, default="Company Product")
     company_name = Column(String, default="")
     
-    # 20+ words (Low), 50+ words (Medium), 100+ words (Hard) Mappings
     low_provider_id = Column(Integer, ForeignKey("providers.id"), nullable=True)
     medium_provider_id = Column(Integer, ForeignKey("providers.id"), nullable=True)
     hard_provider_id = Column(Integer, ForeignKey("providers.id"), nullable=True)
