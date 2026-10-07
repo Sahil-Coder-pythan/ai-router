@@ -1,25 +1,24 @@
 # ==============================================================================
 # STRATIC SOFT - INTELLIGENT ANSWER LENGTH ROUTER
 # ==============================================================================
+
 # यह router सवाल में मौजूद शब्दों की संख्या देखकर routing नहीं करता।
 #
 # इसका उद्देश्य यह अनुमान लगाना है कि सवाल का उचित उत्तर:
-#   LOW    -> छोटा
-#   MEDIUM -> मध्यम
-#   HARD   -> बड़ा / detailed
+#   LOW    -> 1-50 words
+#   MEDIUM -> 51-100 words
+#   HARD   -> 101+ words
 #
 # फिर app.py उसी tier में dashboard से चुनी हुई API को इस्तेमाल करता है.
 #
 # IMPORTANT:
-# अभी Production Key / Provider Mapping के लिए app.py में कोई बदलाव जरूरी नहीं।
-# app.py पहले से:
+# app.py में कोई बदलाव जरूरी नहीं।
 #
 # LOW    -> product.low_provider
 # MEDIUM -> product.medium_provider
 # HARD   -> product.hard_provider
-#
-# ==============================================================================
 
+# ==============================================================================
 import re
 from typing import List, Dict
 
@@ -27,18 +26,15 @@ from typing import List, Dict
 # ------------------------------------------------------------------------------
 # ROUTING LIMITS
 # ------------------------------------------------------------------------------
-#
+
 # Expected answer:
 #
-# 0 - 49 words    -> LOW
-# 50 - 99 words   -> MEDIUM
-# 100+ words      -> HARD
-#
-# ये limits company dashboard में चुनी हुई API को decide करने के लिए हैं.
-# ------------------------------------------------------------------------------
+# 1 - 50 words    -> LOW
+# 51 - 100 words  -> MEDIUM
+# 101+ words      -> HARD
 
-LOW_MAX_WORDS = 49
-MEDIUM_MAX_WORDS = 99
+LOW_MAX_WORDS = 50
+MEDIUM_MAX_WORDS = 100
 
 
 # ------------------------------------------------------------------------------
@@ -76,37 +72,29 @@ def _contains_any(text: str, keywords: List[str]) -> bool:
 # ------------------------------------------------------------------------------
 # EXPLICIT OUTPUT LENGTH DETECTOR
 # ------------------------------------------------------------------------------
-#
-# अगर user खुद बोलता है:
-#
-# "100 line ka code"
-# "100 words mein explain karo"
-# "50 lines ka program"
-#
-# तो यह explicit requirement है।
-#
-# इसे सबसे ज्यादा priority दी जाती है।
-# ------------------------------------------------------------------------------
 
 def _detect_explicit_length(text: str):
     """
-    User द्वारा मांगी गई explicit word/line length detect करता है।
+    User द्वारा मांगी गई explicit word/line length detect करता है.
 
-    Return:
-        integer -> अगर explicit number मिला
-        None    -> अगर नहीं मिला
+    Examples:
+        50 words
+        100 words
+        200 lines
+        100 शब्द
+        200 लाइन
     """
 
     patterns = [
         # English
-        r"(?<!\d)(\d{1,5})\s*(?:\+|plus)?\s*words?\b",
-        r"(?<!\d)(\d{1,5})\s*(?:\+|plus)?\s*lines?\b",
+        r"(?<!\d)(\d{1,6})\s*(?:\+|plus)?\s*words?\b",
+        r"(?<!\d)(\d{1,6})\s*(?:\+|plus)?\s*lines?\b",
 
         # Hindi
-        r"(?<!\d)(\d{1,5})\s*(?:\+|plus)?\s*शब्द",
-        r"(?<!\d)(\d{1,5})\s*(?:\+|plus)?\s*लाइन",
-        r"(?<!\d)(\d{1,5})\s*(?:\+|plus)?\s*लाइन्स",
-        r"(?<!\d)(\d{1,5})\s*(?:\+|plus)?\s*लाइनों",
+        r"(?<!\d)(\d{1,6})\s*(?:\+|plus)?\s*शब्द",
+        r"(?<!\d)(\d{1,6})\s*(?:\+|plus)?\s*लाइन",
+        r"(?<!\d)(\d{1,6})\s*(?:\+|plus)?\s*लाइन्स",
+        r"(?<!\d)(\d{1,6})\s*(?:\+|plus)?\s*लाइनों",
     ]
 
     for pattern in patterns:
@@ -124,28 +112,16 @@ def _detect_explicit_length(text: str):
 # ------------------------------------------------------------------------------
 # EXPLICIT RANGE DETECTOR
 # ------------------------------------------------------------------------------
-#
-# Example:
-#
-# "50 se jyada 100 se kam"
-# "50 से ज्यादा 100 से कम"
-#
-# ऐसे cases में हम upper/lower range देखकर tier decide करते हैं।
-# ------------------------------------------------------------------------------
 
 def _detect_range(text: str):
     """
-    User द्वारा बताई गई approximate range detect करता है।
+    User द्वारा बताई गई approximate range detect करता है.
 
     Examples:
         50 se jyada 100 se kam
         50 से ज्यादा 100 से कम
         20 se kam
         100 se jyada
-
-    Return:
-        tuple(lower, upper)
-        या None
     """
 
     # ----------------------------------------------------------
@@ -154,7 +130,7 @@ def _detect_range(text: str):
     # ----------------------------------------------------------
 
     match = re.search(
-        r"(\d+)\s*(?:se|से)\s*(?:jyada|zyada|ज्यादा|ज्यादा)\s*"
+        r"(\d+)\s*(?:se|से)\s*(?:jyada|zyada|ज्यादा)\s*"
         r"(\d+)\s*(?:se|से)\s*(?:kam|कम)",
         text,
         flags=re.IGNORECASE
@@ -203,64 +179,58 @@ def _detect_range(text: str):
 def _route_from_explicit_length(text: str):
     """
     अगर user ने answer की length खुद बताई है,
-    तो उसी के आधार पर routing करता है।
+    तो उसी के आधार पर routing करता है.
     """
 
-    # पहले range check करें
     detected_range = _detect_range(text)
 
     if detected_range is not None:
 
         lower, upper = detected_range
 
-        # 100+ range -> HARD
-        if lower >= 100:
+        # 101+ -> HARD
+        if lower >= 101:
             return "hard"
 
-        # अगर range 50 से शुरू हो रही है
-        if lower >= 50:
+        # 51+ -> MEDIUM
+        if lower >= 51:
             return "medium"
 
-        # अगर maximum 49 है
-        if upper is not None and upper <= 49:
+        # maximum 50 -> LOW
+        if upper is not None and upper <= 50:
             return "low"
 
-        # अगर range 50 तक जा रही है,
-        # तो medium safer choice है।
+        # Range 50 तक जा रही है
         if upper is not None and upper >= 50:
             return "medium"
 
-    # फिर direct number detect करें
     number = _detect_explicit_length(text)
 
     if number is None:
         return None
 
-    # 100+
-    if number >= 100:
+    # 101+
+    if number >= 101:
         return "hard"
 
-    # 50-99
-    if number >= 50:
+    # 51-100
+    if number >= 51:
         return "medium"
 
-    # 0-49
+    # 1-50
     return "low"
 
 
 # ------------------------------------------------------------------------------
 # HARD INTENT DETECTOR
 # ------------------------------------------------------------------------------
-#
-# यहां हम यह नहीं कह रहे कि सवाल लंबा है।
-#
-# हम देख रहे हैं कि user ने ऐसा काम मांगा है जिसका normal answer
-# naturally बड़ा / detailed होने की संभावना है।
-# ------------------------------------------------------------------------------
 
 HARD_INTENT_KEYWORDS = [
 
-    # English
+    # ------------------------------------------------------------------
+    # English - very large / detailed requests
+    # ------------------------------------------------------------------
+
     "full project",
     "complete project",
     "entire project",
@@ -275,7 +245,9 @@ HARD_INTENT_KEYWORDS = [
 
     "write an essay",
     "essay",
+
     "write a long story",
+    "long story",
     "detailed story",
 
     "in great detail",
@@ -285,11 +257,21 @@ HARD_INTENT_KEYWORDS = [
     "deep dive",
     "comprehensive explanation",
 
+    "explain in detail",
+    "explain everything",
+    "everything about",
+    "all details",
+    "complete explanation",
+
+    # ------------------------------------------------------------------
     # Hindi
+    # ------------------------------------------------------------------
+
     "पूरा प्रोजेक्ट",
     "पूरी एप्लीकेशन",
     "पूरी एप्लिकेशन",
     "पूरा सिस्टम",
+
     "पूरा कोड",
     "पूरी कोडिंग",
 
@@ -297,11 +279,16 @@ HARD_INTENT_KEYWORDS = [
     "बहुत विस्तार से",
     "पूरी जानकारी",
     "पूरी तरह समझाओ",
+    "पूरी तरह समझाइए",
     "पूरा सिद्धांत",
     "पूरा विवरण",
+    "पूरा इतिहास",
 
     "निबंध लिखो",
+    "निबंध बताओ",
     "लंबी कहानी",
+    "विस्तृत जानकारी",
+    "विस्तारपूर्वक समझाओ",
 ]
 
 
@@ -318,10 +305,12 @@ MEDIUM_INTENT_KEYWORDS = [
     "how does",
     "how do",
     "how to",
+
     "step by step",
 
     "difference between",
     "difference",
+
     "compare",
     "comparison",
 
@@ -330,6 +319,8 @@ MEDIUM_INTENT_KEYWORDS = [
     "reasons",
 
     "summary",
+    "summarize",
+
     "describe",
     "describe this",
 
@@ -343,40 +334,130 @@ MEDIUM_INTENT_KEYWORDS = [
     "कैसे काम करती",
     "कैसे करें",
     "कैसे करे",
+
     "स्टेप बाय स्टेप",
+
     "अंतर बताओ",
     "अंतर",
+
     "तुलना करो",
     "तुलना",
+
     "क्यों",
     "कारण बताओ",
+
     "उदाहरण",
     "उदाहरण सहित",
+
+    "बताइए",
 ]
 
 
 # ------------------------------------------------------------------------------
-# HARD ROUTING
+# CONCEPT / THEORY DETECTOR
+# ------------------------------------------------------------------------------
+#
+# यह सबसे important हिस्सा है।
+#
+# छोटा question होने का मतलब यह नहीं कि answer छोटा होगा।
+#
+# Example:
+#
+# "Newton के गति के नियम बताओ"
+#
+# Question छोटा है लेकिन expected answer naturally कई paragraphs हो सकता है।
+#
+# इसलिए theory/concept topics को ज्यादा expected words दिए जाते हैं।
 # ------------------------------------------------------------------------------
 
-def _detect_hard_intent(text: str) -> bool:
-    """
-    ऐसे सवाल detect करता है जिनका expected answer सामान्यतः बड़ा होता है।
-    """
+THEORY_KEYWORDS = [
 
-    return _contains_any(text, HARD_INTENT_KEYWORDS)
+    # Physics
+    "newton",
+    "न्यूटन",
+    "गति के नियम",
+    "गति का नियम",
+    "laws of motion",
+    "law of motion",
+
+    "gravity",
+    "गुरुत्वाकर्षण",
+    "relativity",
+    "सापेक्षता",
+    "quantum",
+    "क्वांटम",
+
+    "thermodynamics",
+    "ऊष्मागतिकी",
+
+    "electromagnetism",
+    "विद्युत चुंबकत्व",
+
+    "photosynthesis",
+    "प्रकाश संश्लेषण",
+
+    "evolution",
+    "विकासवाद",
+
+    # Mathematics
+    "theorem",
+    "प्रमेय",
+    "proof",
+    "प्रमाण",
+    "derivation",
+    "व्युत्पत्ति",
+
+    # Computer / AI concepts
+    "machine learning",
+    "deep learning",
+    "artificial intelligence",
+    "ai",
+    "neural network",
+    "न्यूरल नेटवर्क",
+    "algorithm",
+    "एल्गोरिदम",
+
+    # General theory
+    "theory",
+    "सिद्धांत",
+    "concept",
+    "अवधारणा",
+    "principle",
+    "सिद्धांत",
+    "working principle",
+    "कार्य सिद्धांत",
+]
 
 
 # ------------------------------------------------------------------------------
-# MEDIUM ROUTING
+# MULTI-ITEM / LIST DETECTOR
 # ------------------------------------------------------------------------------
 
-def _detect_medium_intent(text: str) -> bool:
-    """
-    ऐसे सवाल detect करता है जिनके लिए सामान्यतः थोड़ा explanation चाहिए।
-    """
+MULTI_ITEM_KEYWORDS = [
 
-    return _contains_any(text, MEDIUM_INTENT_KEYWORDS)
+    "all",
+    "all the",
+    "four",
+    "five",
+    "six",
+    "multiple",
+    "rules",
+    "laws",
+    "types",
+    "steps",
+
+    "सभी",
+    "चारों",
+    "पांचों",
+    "छहों",
+    "सारे",
+    "सभी नियम",
+    "नियम",
+    "कानून",
+    "प्रकार",
+    "स्टेप",
+    "चरण",
+]
 
 
 # ------------------------------------------------------------------------------
@@ -389,6 +470,7 @@ def _is_code_request(text: str) -> bool:
     """
 
     code_keywords = [
+
         "code",
         "coding",
         "program",
@@ -415,6 +497,191 @@ def _is_code_request(text: str) -> bool:
 
 
 # ------------------------------------------------------------------------------
+# HARD ROUTING
+# ------------------------------------------------------------------------------
+
+def _detect_hard_intent(text: str) -> bool:
+    """
+    ऐसे सवाल detect करता है जिनका expected answer सामान्यतः बड़ा होता है।
+    """
+
+    return _contains_any(text, HARD_INTENT_KEYWORDS)
+
+
+# ------------------------------------------------------------------------------
+# MEDIUM ROUTING
+# ------------------------------------------------------------------------------
+
+def _detect_medium_intent(text: str) -> bool:
+    """
+    ऐसे सवाल detect करता है जिनके लिए सामान्यतः explanation चाहिए।
+    """
+
+    return _contains_any(text, MEDIUM_INTENT_KEYWORDS)
+
+
+# ------------------------------------------------------------------------------
+# EXPECTED ANSWER LENGTH ESTIMATOR
+# ------------------------------------------------------------------------------
+#
+# यह actual answer के words नहीं गिनता।
+#
+# API call से पहले question देखकर अनुमान लगाता है:
+#
+# LOW    -> expected 1-50 words
+# MEDIUM -> expected 51-100 words
+# HARD   -> expected 101+ words
+#
+# ------------------------------------------------------------------------------
+
+def _estimate_expected_answer_words(text: str) -> int:
+    """
+    User के question के meaning/intent के आधार पर
+    expected answer की approximate word length estimate करता है।
+    """
+
+    text = text.lower().strip()
+
+    if not text:
+        return 1
+
+    # ----------------------------------------------------------
+    # Explicit request सबसे ऊपर
+    # ----------------------------------------------------------
+
+    explicit_number = _detect_explicit_length(text)
+
+    if explicit_number is not None:
+        return explicit_number
+
+    # ----------------------------------------------------------
+    # Explicit range
+    # ----------------------------------------------------------
+
+    detected_range = _detect_range(text)
+
+    if detected_range is not None:
+
+        lower, upper = detected_range
+
+        if upper is None:
+            return max(lower, 101)
+
+        return max(lower, upper)
+
+    # ----------------------------------------------------------
+    # बहुत detailed request
+    # ----------------------------------------------------------
+
+    if _detect_hard_intent(text):
+        return 180
+
+    # ----------------------------------------------------------
+    # Theory / concept questions
+    #
+    # छोटे सवाल लेकिन naturally बड़ा answer
+    # ----------------------------------------------------------
+
+    if _contains_any(text, THEORY_KEYWORDS):
+
+        # अगर multiple laws/rules/types हैं,
+        # answer और बड़ा होने की संभावना है।
+        if _contains_any(text, MULTI_ITEM_KEYWORDS):
+            return 180
+
+        # Theory/concept सामान्यतः 100+ हो सकता है।
+        return 130
+
+    # ----------------------------------------------------------
+    # Multiple things पूछी गई हैं
+    # ----------------------------------------------------------
+
+    if _contains_any(text, MULTI_ITEM_KEYWORDS):
+
+        return 110
+
+    # ----------------------------------------------------------
+    # Medium explanation
+    # ----------------------------------------------------------
+
+    if _detect_medium_intent(text):
+
+        return 75
+
+    # ----------------------------------------------------------
+    # Coding request
+    # ----------------------------------------------------------
+    #
+    # बिना explicit size के normal code request medium।
+    #
+
+    if _is_code_request(text):
+
+        return 75
+
+    # ----------------------------------------------------------
+    # Very short conversational questions
+    # ----------------------------------------------------------
+
+    short_patterns = [
+        "hello",
+        "hi",
+        "hey",
+        "thanks",
+        "thank you",
+        "ok",
+        "okay",
+        "bye",
+
+        "हेलो",
+        "हाय",
+        "धन्यवाद",
+        "थैंक यू",
+        "ओके",
+        "बाय",
+    ]
+
+    if _contains_any(text, short_patterns):
+        return 10
+
+    # ----------------------------------------------------------
+    # Simple factual question
+    # ----------------------------------------------------------
+    #
+    # Default answer छोटा माना जाएगा।
+    #
+
+    return 35
+
+
+# ------------------------------------------------------------------------------
+# EXPECTED WORD COUNT -> TIER
+# ------------------------------------------------------------------------------
+
+def _tier_from_expected_words(expected_words: int) -> str:
+    """
+    Expected answer words को LOW/MEDIUM/HARD में बदलता है।
+
+    1-50   -> LOW
+    51-100 -> MEDIUM
+    101+   -> HARD
+    """
+
+    try:
+        expected_words = int(expected_words)
+    except (TypeError, ValueError):
+        expected_words = 35
+
+    if expected_words <= 50:
+        return "low"
+
+    if expected_words <= 100:
+        return "medium"
+
+    return "hard"
+
+
+# ------------------------------------------------------------------------------
 # MAIN ROUTER
 # ------------------------------------------------------------------------------
 
@@ -422,11 +689,16 @@ def estimate_response_complexity(messages: List[Dict]) -> str:
     """
     Intelligent Answer-Length Router.
 
-    IMPORTANT:
-    यह function user के question की length नहीं देखता।
+    यह user के question की length नहीं देखता।
 
-    यह अनुमान लगाता है कि user के सवाल का उचित answer
-    कितना बड़ा होना चाहिए।
+    पहले यह अनुमान लगाता है कि answer कितने words का
+    हो सकता है।
+
+    फिर:
+
+        1-50    -> LOW
+        51-100  -> MEDIUM
+        101+    -> HARD
 
     Returns:
         "low"
@@ -435,7 +707,7 @@ def estimate_response_complexity(messages: List[Dict]) -> str:
     """
 
     # ----------------------------------------------------------
-    # Empty conversation
+    # Get user question
     # ----------------------------------------------------------
 
     text = _get_last_message(messages)
@@ -446,13 +718,17 @@ def estimate_response_complexity(messages: List[Dict]) -> str:
     # ==========================================================
     # PRIORITY 1
     # ==========================================================
-    # User ने अगर खुद output size बताई है,
-    # तो वही सबसे ज्यादा important है।
+    # अगर user ने खुद output size बताई है,
+    # तो वही सबसे accurate information है।
     #
     # Example:
-    # 20 line code       -> LOW
-    # 50 words           -> MEDIUM
-    # 100 line code      -> HARD
+    #
+    # 20 words       -> LOW
+    # 50 words       -> LOW
+    # 51 words       -> MEDIUM
+    # 100 words      -> MEDIUM
+    # 101 words      -> HARD
+    #
     # ==========================================================
 
     explicit_route = _route_from_explicit_length(text)
@@ -463,47 +739,18 @@ def estimate_response_complexity(messages: List[Dict]) -> str:
     # ==========================================================
     # PRIORITY 2
     # ==========================================================
-    # बहुत बड़ा / detailed task
+    # अब question के expected answer को estimate करो।
+    #
+    # Actual API call से पहले।
+    #
     # ==========================================================
 
-    if _detect_hard_intent(text):
-        return "hard"
+    expected_words = _estimate_expected_answer_words(text)
 
     # ==========================================================
     # PRIORITY 3
     # ==========================================================
-    # Medium explanation वाला task
+    # Expected words के आधार पर final tier।
     # ==========================================================
 
-    if _detect_medium_intent(text):
-        return "medium"
-
-    # ==========================================================
-    # PRIORITY 4
-    # ==========================================================
-    # Code request
-    #
-    # बिना requested size के code को सीधे HARD नहीं भेजेंगे।
-    # सामान्य coding request को MEDIUM माना जाएगा।
-    #
-    # अगर user "full/complete/100 lines" बोलेगा,
-    # ऊपर वाले rules उसे HARD कर देंगे।
-    # ==========================================================
-
-    if _is_code_request(text):
-        return "medium"
-
-    # ==========================================================
-    # PRIORITY 5
-    # ==========================================================
-    # सामान्य short/factual question
-    #
-    # जैसे:
-    # "hello"
-    # "taj mahal kisne banaya"
-    # "India ki capital kya hai"
-    #
-    # ऐसे simple questions को LOW भेजना economical है।
-    # ==========================================================
-
-    return "low"
+    return _tier_from_expected_words(expected_words)
