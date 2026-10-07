@@ -8,3 +8,6 @@ jinja2
 python-multipart
 psycopg[binary]
 slowapi
+authlib
+itsdangerous
+bcrypt
